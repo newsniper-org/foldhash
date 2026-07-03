@@ -97,18 +97,18 @@ const FIXED_KHI: u64 = 0x13198A2E03707344;
 
 #[cfg(not(feature = "ct-mul"))]
 #[inline(always)]
-fn mulhi(x: u64, k: u64) -> u64 {
+const fn mulhi(x: u64, k: u64) -> u64 {
     (((x as u128) * (k as u128)) >> 64) as u64
 }
 #[cfg(not(feature = "ct-mul"))]
 #[inline(always)]
-fn widen(a: u64, b: u64) -> (u64, u64) {
+const fn widen(a: u64, b: u64) -> (u64, u64) {
     let p = (a as u128) * (b as u128);
     (p as u64, (p >> 64) as u64)
 }
 #[cfg(not(feature = "ct-mul"))]
 #[inline(always)]
-fn wmul_lo(x: u64, k: u64) -> u64 {
+const fn wmul_lo(x: u64, k: u64) -> u64 {
     x.wrapping_mul(k)
 }
 
@@ -121,7 +121,7 @@ fn wmul_lo(x: u64, k: u64) -> u64 {
 /// instruction this path exists to avoid. Bit-exact with `(a as u128)*(b as u128)`.
 #[cfg(feature = "ct-mul")]
 #[inline]
-fn mul_wide_ct(a: u64, b: u64) -> (u64, u64) {
+const fn mul_wide_ct(a: u64, b: u64) -> (u64, u64) {
     let mut lo: u64 = 0;
     let mut hi: u64 = 0;
     let mut i: u32 = 0;
@@ -139,22 +139,22 @@ fn mul_wide_ct(a: u64, b: u64) -> (u64, u64) {
 }
 #[cfg(feature = "ct-mul")]
 #[inline(always)]
-fn widen(a: u64, b: u64) -> (u64, u64) {
+const fn widen(a: u64, b: u64) -> (u64, u64) {
     mul_wide_ct(a, b)
 }
 #[cfg(feature = "ct-mul")]
 #[inline(always)]
-fn mulhi(x: u64, k: u64) -> u64 {
+const fn mulhi(x: u64, k: u64) -> u64 {
     mul_wide_ct(x, k).1
 }
 #[cfg(feature = "ct-mul")]
 #[inline(always)]
-fn wmul_lo(x: u64, k: u64) -> u64 {
+const fn wmul_lo(x: u64, k: u64) -> u64 {
     mul_wide_ct(x, k).0
 }
 
 #[inline(always)]
-fn splitmix64(x: u64) -> u64 {
+const fn splitmix64(x: u64) -> u64 {
     let x = x.wrapping_add(GAMMA);
     let mut z = x;
     z = wmul_lo(z ^ (z >> 30), SM1);
@@ -170,14 +170,14 @@ const fn round_keys(klo: u64, khi: u64, w: u64) -> (u64, u64) {
 }
 
 #[inline(always)]
-fn init_state(klo: u64, khi: u64) -> (u64, u64) {
+const fn init_state(klo: u64, khi: u64) -> (u64, u64) {
     let a = splitmix64((klo ^ INIT_A_DOMAIN).wrapping_add(khi));
     let b = splitmix64((khi ^ INIT_B_DOMAIN).wrapping_add(klo));
     (a, b)
 }
 
 #[inline(always)]
-fn round(a: u64, b: u64, rk0: u64, rk1: u64) -> (u64, u64) {
+const fn round(a: u64, b: u64, rk0: u64, rk1: u64) -> (u64, u64) {
     let a = a ^ rk0;
     let b = b ^ rk1;
     let (lo, hi) = widen(a, b);
@@ -213,7 +213,7 @@ impl SecureFoldHasher {
     /// For HashDoS/PRF security the key must be unpredictable to the attacker;
     /// prefer [`RandomState`] which draws it from the OS CSPRNG.
     #[inline]
-    pub fn with_key(klo: u64, khi: u64) -> Self {
+    pub const fn with_key(klo: u64, khi: u64) -> Self {
         let (a, b) = init_state(klo, khi);
         Self {
             a,
@@ -451,6 +451,11 @@ impl BuildHasher for RandomState {
 mod tests {
     use super::*;
     use core::hash::Hasher;
+
+    // Compile-time proof that with_key (and the whole init/multiply chain it
+    // calls) stays `const fn` in BOTH feature configs — including `ct-mul`,
+    // whose software multiply uses black_box, which is const-callable here.
+    const _CT_CONSTRUCTIBLE: SecureFoldHasher = SecureFoldHasher::with_key(0x0123, 0x4567);
 
     fn h(hexmsg: &str, klo: u64, khi: u64) -> u64 {
         let bytes: std::vec::Vec<u8> = (0..hexmsg.len())
