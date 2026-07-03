@@ -14,14 +14,18 @@ When should you **not** use foldhash:
 - You expect foldhash to have a consistent output across versions or
   platforms, such as for persistent file formats or communication protocols.
   
-- You are relying on foldhash's properties for any kind of security.
-  Foldhash is **not appropriate for any cryptographic purpose**.
+- You are relying on the `fast` or `quality` variant's properties for any kind
+  of security — those two variants are **not appropriate for any cryptographic
+  purpose**. (This fork additionally provides a `secure` variant, a heuristic
+  keyed PRF targeting SipHash-1-3-class security — see "The `secure` variant"
+  below. It is still a heuristic construction, not a proven one.)
 
-Foldhash has two variants, one optimized for speed which is ideal for data
-structures such as hash maps and bloom filters, and one optimized for
-statistical quality which is ideal for algorithms such as
+Foldhash has two non-cryptographic variants: one optimized for speed (`fast`),
+ideal for data structures such as hash maps and bloom filters, and one optimized
+for statistical quality (`quality`), ideal for algorithms such as
 [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) and
-[MinHash](https://en.wikipedia.org/wiki/MinHash).
+[MinHash](https://en.wikipedia.org/wiki/MinHash). This fork adds a third variant,
+`secure`, a keyed 64-bit pseudo-random function (see "The `secure` variant").
 
 Foldhash can be used in a `#![no_std]` environment by disabling its default
 `"std"` feature.
@@ -201,6 +205,78 @@ fail this avalanche property but foldhash-q and SipHash-1-3 pass:
 | <img src="assets/avalanche-fxhash.png" width=300> | <img src="assets/avalanche-foldhash-fast.png" width=300> | <img src="assets/avalanche-foldhash-quality.png" width=300> | <img src="assets/avalanche-siphash.png" width=300>
 
 
+## The `secure` variant
+
+> The `secure` variant is an addition in the
+> [newsniper-org fork](https://github.com/newsniper-org/foldhash); it is not part
+> of upstream foldhash.
+
+The `fast` and `quality` variants are non-cryptographic and only *minimally*
+DoS-resistant (see "HashDoS resistance"). The `secure` variant is different: it
+is a **heuristic keyed pseudo-random function** with a 64-bit output, designed so
+that — without the key — its output is indistinguishable from random and key
+recovery costs about 2¹²⁸ work. Its worst-case cryptographic targets match
+[SipHash-1-3](https://en.wikipedia.org/wiki/SipHash), so it is suitable for uses
+that need genuine (not merely "minimal") HashDoS resistance, and for MAC-/token-
+like keyed hashing.
+
+Like every practical keyed hash (including SipHash and HMAC), its security is a
+**heuristic / conditional argument, not an unconditional proof**: it rests on
+extensive cryptanalysis plus a machine-checked reduction to a stated assumption
+about its round function, not on a proof that no attack exists. Its 64-bit output
+also carries the usual 2³² collision birthday bound (identical to SipHash-64),
+and it is meaningfully slower than `fast`/`quality`.
+
+### Design (no S-box, non-ARX)
+
+`secure` is an absorbing keyed construction over a 128-bit state `(a, b)`, folded
+to 64 bits (`a ^ b`) at the end. Its only non-linearity is the integer
+**multiply-high** (the high 64 bits of a 64×64→128 product) together with the
+full widening product — there is no lookup table and no bitsliced S-box, so it is
+free of data-dependent table lookups (cache-timing immune on cores with a
+constant-latency multiply). Each round is:
+
+```text
+a ^= rk0 ; b ^= rk1                 # key injection (XOR)
+(lo, hi) = a * b                    # 64x64 -> 128 widening product (lane coupling)
+a = lo ^ mulhi(a, C)               # multiply-high confusion
+b = hi ^ mulhi(b, Cp)
+t = a ^ rotl(b, 23) ; b = b ^ rotl(t, 31) ; a = t   # rotfeistel diffusion
+```
+
+with round keys derived on the fly from the 128-bit master key by a
+multiply-free additive (Weyl) schedule.
+
+### Usage
+
+```rust
+use std::hash::BuildHasher;
+use foldhash::secure::RandomState;   // requires the `secure` feature
+
+let rs = RandomState::default();     // per-instance 128-bit key from the OS CSPRNG
+let hash = rs.hash_one("hello world");
+```
+
+Keying **requires** an unpredictable key: use `secure::RandomState` (enabled by
+the `secure` crate feature, which draws a 128-bit key from the OS CSPRNG via
+`getrandom`). `secure::FixedState` and `SecureFoldHasher::with_key` take a
+caller-supplied key and are only appropriate when that key is itself secret.
+
+### Features
+
+- `secure` — enables `secure::RandomState` (pulls in `getrandom`). The `secure`
+  core, `FixedState`, and `with_key` remain available without it (zero-dep).
+- `ct-mul` — replaces the data-path multiply with a bit-exact, data-oblivious
+  constant-time software multiply. Enable it on targets whose native 64×64→128
+  multiply has data-dependent latency (some ARM Cortex-M, older ARM, low-end
+  embedded, or emulated 32-bit/wasm paths); it is substantially slower. The
+  default (native multiply) is constant-time on mainstream cores (x86-64,
+  aarch64, modern RISC-V).
+
+Use `secure` only when you actually need keyed-PRF strength; for ordinary hash
+maps prefer `fast` (or `quality`), which are far faster.
+
+
 ## Background
 
 The name foldhash is derived from the *folded multiply*. This technique
@@ -275,6 +351,11 @@ outputs, and feasible to derive the secret values from indirect observation of
 hashes, such as through timing attacks or hash table iteration. Once an attacker
 knows the secret values, they can once again create infinite hash collisions
 with ease.
+
+The `secure` variant (this fork) *does* target HashDoS resistance against
+interactive attackers: it is a keyed PRF whose per-instance secret is not
+recoverable from observing hash outputs below ~2¹²⁸ work. Reach for it when you
+need that guarantee rather than the `fast`/`quality` "minimal" resistance.
 
 
 ## Acknowledgements
