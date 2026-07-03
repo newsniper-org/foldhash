@@ -20,6 +20,12 @@ nightly = []
 # OS CSPRNG. Pulls in `getrandom`; the `secure` variant's core, `FixedState`, and
 # `with_key` remain available (zero-dep) without this feature.
 secure = ["dep:getrandom"]
+# Constant-time software multiply for the `secure` variant. Enable on targets
+# whose native 64x64->128 multiply has data-dependent latency (some ARM Cortex-M,
+# older ARM, low-end embedded RISC-V/MIPS, or emulated 32-bit/wasm paths).
+# Bit-exact output (frozen KAT preserved); substantially slower. Default (off)
+# uses the fast native multiply, which is constant-time on mainstream cores.
+ct-mul = []
 
 [dependencies]
 getrandom = { version = "0.2", optional = true }

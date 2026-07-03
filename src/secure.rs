@@ -75,23 +75,90 @@ const R_F: usize = 4;
 const FIXED_KLO: u64 = 0x243F6A8885A308D3;
 const FIXED_KHI: u64 = 0x13198A2E03707344;
 
+// --------------------------------------------------------------------------- //
+// multiply primitives — must be constant-time on the data path.
+//
+// The secure variant's cache-/data-timing immunity rests on the 64x64->128
+// multiply (widen/mulhi) having *data-independent latency*. This holds on
+// mainstream cores (x86-64 MUL/MULX, aarch64 MUL/UMULH, modern RISC-V
+// MUL/MULHU). On cores with a data-dependent / early-terminating multiplier
+// (some ARM Cortex-M, older ARM7, certain low-end embedded RISC-V/MIPS) -- and
+// on 32-bit / wasm targets that emulate the widening product with narrower
+// multiplies that may themselves be variable-time -- the native multiply leaks
+// operand magnitude through timing.
+//
+// Enable the `ct-mul` feature on such targets: it replaces every data-path
+// multiply with a data-oblivious software multiply (`mul_wide_ct`) -- no
+// multiply instruction, no branch on data, no table; only shifts, AND and ADD
+// over a fixed 64-step schedule -- which is **bit-exact** with the native
+// product (so the frozen KAT is preserved) at a substantial speed cost. Without
+// the feature the fast native multiply is used.
+// --------------------------------------------------------------------------- //
+
+#[cfg(not(feature = "ct-mul"))]
 #[inline(always)]
-const fn mulhi(x: u64, k: u64) -> u64 {
+fn mulhi(x: u64, k: u64) -> u64 {
     (((x as u128) * (k as u128)) >> 64) as u64
 }
-
+#[cfg(not(feature = "ct-mul"))]
 #[inline(always)]
-const fn widen(a: u64, b: u64) -> (u64, u64) {
+fn widen(a: u64, b: u64) -> (u64, u64) {
     let p = (a as u128) * (b as u128);
     (p as u64, (p >> 64) as u64)
 }
+#[cfg(not(feature = "ct-mul"))]
+#[inline(always)]
+fn wmul_lo(x: u64, k: u64) -> u64 {
+    x.wrapping_mul(k)
+}
+
+/// Constant-time (data-oblivious) 64x64 -> 128 schoolbook multiply.
+///
+/// Every iteration processes one bit of `b` with a *branchless* masked add;
+/// the shift amounts are the loop index (not data), and no hardware multiply is
+/// used. `black_box` stops LLVM from reassociating the shift/add schedule back
+/// into a hardware multiply, which would reintroduce the variable-latency
+/// instruction this path exists to avoid. Bit-exact with `(a as u128)*(b as u128)`.
+#[cfg(feature = "ct-mul")]
+#[inline]
+fn mul_wide_ct(a: u64, b: u64) -> (u64, u64) {
+    let mut lo: u64 = 0;
+    let mut hi: u64 = 0;
+    let mut i: u32 = 0;
+    while i < 64 {
+        let bit = (b >> i) & 1;
+        let mask = 0u64.wrapping_sub(bit); // 0x0.. or 0xf.. — data-oblivious select
+        let add_lo = (a << i) & mask; // i is the loop index, not secret data
+        let add_hi = (if i == 0 { 0 } else { a >> (64 - i) }) & mask;
+        let (nlo, carry) = lo.overflowing_add(core::hint::black_box(add_lo));
+        lo = nlo;
+        hi = hi.wrapping_add(add_hi).wrapping_add(carry as u64);
+        i += 1;
+    }
+    (lo, hi)
+}
+#[cfg(feature = "ct-mul")]
+#[inline(always)]
+fn widen(a: u64, b: u64) -> (u64, u64) {
+    mul_wide_ct(a, b)
+}
+#[cfg(feature = "ct-mul")]
+#[inline(always)]
+fn mulhi(x: u64, k: u64) -> u64 {
+    mul_wide_ct(x, k).1
+}
+#[cfg(feature = "ct-mul")]
+#[inline(always)]
+fn wmul_lo(x: u64, k: u64) -> u64 {
+    mul_wide_ct(x, k).0
+}
 
 #[inline(always)]
-const fn splitmix64(x: u64) -> u64 {
+fn splitmix64(x: u64) -> u64 {
     let x = x.wrapping_add(GAMMA);
     let mut z = x;
-    z = (z ^ (z >> 30)).wrapping_mul(SM1);
-    z = (z ^ (z >> 27)).wrapping_mul(SM2);
+    z = wmul_lo(z ^ (z >> 30), SM1);
+    z = wmul_lo(z ^ (z >> 27), SM2);
     z ^ (z >> 31)
 }
 
@@ -103,14 +170,14 @@ const fn round_keys(klo: u64, khi: u64, w: u64) -> (u64, u64) {
 }
 
 #[inline(always)]
-const fn init_state(klo: u64, khi: u64) -> (u64, u64) {
+fn init_state(klo: u64, khi: u64) -> (u64, u64) {
     let a = splitmix64((klo ^ INIT_A_DOMAIN).wrapping_add(khi));
     let b = splitmix64((khi ^ INIT_B_DOMAIN).wrapping_add(klo));
     (a, b)
 }
 
 #[inline(always)]
-const fn round(a: u64, b: u64, rk0: u64, rk1: u64) -> (u64, u64) {
+fn round(a: u64, b: u64, rk0: u64, rk1: u64) -> (u64, u64) {
     let a = a ^ rk0;
     let b = b ^ rk1;
     let (lo, hi) = widen(a, b);
@@ -146,7 +213,7 @@ impl SecureFoldHasher {
     /// For HashDoS/PRF security the key must be unpredictable to the attacker;
     /// prefer [`RandomState`] which draws it from the OS CSPRNG.
     #[inline]
-    pub const fn with_key(klo: u64, khi: u64) -> Self {
+    pub fn with_key(klo: u64, khi: u64) -> Self {
         let (a, b) = init_state(klo, khi);
         Self {
             a,
@@ -474,6 +541,58 @@ mod tests {
             x.write(&msg[..split]);
             x.write(&msg[split..]);
             assert_eq!(x.finish(), oneshot, "streaming split at {split} differs");
+        }
+    }
+
+    #[test]
+    fn ct_mul_bit_exact_vs_native() {
+        // The constant-time software multiply must be bit-exact to the native
+        // widening product for ALL inputs — this is what lets the `ct-mul`
+        // feature preserve the frozen KAT. Both algorithms are checked here
+        // regardless of which feature is active.
+        fn native(a: u64, b: u64) -> (u64, u64) {
+            let p = (a as u128) * (b as u128);
+            (p as u64, (p >> 64) as u64)
+        }
+        fn ct(a: u64, b: u64) -> (u64, u64) {
+            let mut lo = 0u64;
+            let mut hi = 0u64;
+            let mut i = 0u32;
+            while i < 64 {
+                let bit = (b >> i) & 1;
+                let mask = 0u64.wrapping_sub(bit);
+                let add_lo = (a << i) & mask;
+                let add_hi = (if i == 0 { 0 } else { a >> (64 - i) }) & mask;
+                let (nlo, carry) = lo.overflowing_add(add_lo);
+                lo = nlo;
+                hi = hi.wrapping_add(add_hi).wrapping_add(carry as u64);
+                i += 1;
+            }
+            (lo, hi)
+        }
+        for &(a, b) in &[
+            (0u64, 0u64),
+            (0, 1),
+            (1, 0),
+            (u64::MAX, u64::MAX),
+            (u64::MAX, 1),
+            (1, u64::MAX),
+            (1u64 << 63, 1u64 << 63),
+            (0xdeadbeefcafebabe, 0x0123456789abcdef),
+        ] {
+            assert_eq!(ct(a, b), native(a, b), "ct != native for ({a:#x},{b:#x})");
+        }
+        let mut s = 0x9e3779b97f4a7c15u64;
+        let mut nextr = || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s
+        };
+        for _ in 0..200_000 {
+            let a = nextr();
+            let b = nextr();
+            assert_eq!(ct(a, b), native(a, b));
         }
     }
 
