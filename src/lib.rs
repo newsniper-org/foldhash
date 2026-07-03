@@ -11,14 +11,19 @@
 //! - You expect foldhash to have a consistent output across versions or
 //!   platforms, such as for persistent file formats or communication protocols.
 //!   
-//! - You are relying on foldhash's properties for any kind of security.
-//!   Foldhash is **not appropriate for any cryptographic purpose**.
+//! - You are relying on the [`fast`] or [`quality`] variant's properties for any
+//!   kind of security — those two variants are **not appropriate for any
+//!   cryptographic purpose**. (This fork additionally provides a [`secure`]
+//!   variant, a heuristic keyed PRF targeting SipHash-1-3-class security; it is
+//!   still a heuristic construction, not a proven one — see below.)
 //!
-//! Foldhash has two variants, one optimized for speed which is ideal for data
-//! structures such as hash maps and bloom filters, and one optimized for
-//! statistical quality which is ideal for algorithms such as
-//! [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) and
-//! [MinHash](https://en.wikipedia.org/wiki/MinHash).
+//! Foldhash has two non-cryptographic variants: one optimized for speed
+//! ([`fast`]), ideal for data structures such as hash maps and bloom filters,
+//! and one optimized for statistical quality ([`quality`]), ideal for algorithms
+//! such as [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) and
+//! [MinHash](https://en.wikipedia.org/wiki/MinHash). This fork adds a third
+//! variant, [`secure`], a keyed 64-bit pseudo-random function (see the
+//! [`secure`] module).
 //!
 //! Foldhash can be used in a `#![no_std]` environment by disabling its default
 //! `"std"` feature.
@@ -82,6 +87,32 @@
 //! let hash = random_state.hash_one("hello world");
 //! ```
 //!
+//! ## The [`secure`] variant
+//!
+//! Unlike [`fast`] and [`quality`], the [`secure`] variant is a *heuristic keyed
+//! PRF* (64-bit output) whose worst-case cryptographic targets match SipHash-1-3
+//! (key recovery ~2^128; without the key the output is indistinguishable from
+//! random). Its security is heuristic/conditional (cryptanalysis plus a
+//! machine-checked reduction), **not an unconditional proof**, and its 64-bit
+//! output keeps the usual 2^32 collision birthday bound; it is meaningfully
+//! slower than the other two variants. Reach for it when you need genuine (not
+//! merely "minimal") HashDoS resistance, or MAC-/token-like keyed hashing.
+//!
+//! For production use, key it from the OS CSPRNG with `secure::RandomState`
+//! (requires the `secure` crate feature); `secure::FixedState` and
+//! `secure::SecureFoldHasher::with_key` take a caller-supplied key that must
+//! itself be kept secret.
+//!
+//! ```rust
+//! use std::hash::BuildHasher;
+//! use foldhash::secure::FixedState;
+//!
+//! // FixedState takes an explicit key; in production prefer secure::RandomState
+//! // (feature "secure"), which draws a random 128-bit key from the OS CSPRNG.
+//! let hash = FixedState::with_keys(0x0123456789abcdef, 0xfedcba9876543210)
+//!     .hash_one("hello world");
+//! ```
+//!
 //! ## Seeding
 //!
 //! Foldhash relies on a single 8-byte per-hasher seed which should be ideally
@@ -110,6 +141,15 @@
 //!   [`hasher_prefixfree_extras`](https://github.com/rust-lang/rust/issues/96762),
 //! - `std`, this enabled-by-default feature offers convenient aliases for `std`
 //!   containers, but can be turned off for `#![no_std]` crates.
+//! - `secure`, enables `secure::RandomState` (the recommended keyed source for
+//!   the [`secure`] variant), which draws a per-instance 128-bit key from the OS
+//!   CSPRNG via `getrandom`. The [`secure`] core, `secure::FixedState`, and
+//!   `secure::SecureFoldHasher::with_key` are available without it.
+//! - `ct-mul`, makes the [`secure`] variant use a bit-exact, data-oblivious
+//!   constant-time software multiply. Enable it on targets whose native
+//!   64x64->128 multiply has data-dependent latency (some ARM Cortex-M, older
+//!   ARM, low-end embedded, or emulated 32-bit/wasm paths); it is substantially
+//!   slower. The default (native multiply) is constant-time on mainstream cores.
 
 #![cfg_attr(all(not(test), not(feature = "std")), no_std)]
 #![cfg_attr(feature = "nightly", feature(hasher_prefixfree_extras))]

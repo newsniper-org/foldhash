@@ -7,7 +7,7 @@
 //! ~2^128. Its worst-case cryptographic targets match SipHash-1-3 (see the
 //! honest scope below). It is intended for MAC-/token-like uses and for hash
 //! maps that need genuine HashDoS resistance rather than the "minimal"
-//! resistance of [`fast`].
+//! resistance of [`fast`](crate::fast).
 //!
 //! ## Construction (RD1, `rotfeistel(23, 31)`, R_b = 2, R_f = 4)
 //!
@@ -37,12 +37,12 @@
 //! conditional PRF reduction), *not* an unconditional proof — as is the case for
 //! every practical keyed hash including SipHash/HMAC. The 64-bit output implies
 //! a 2^32 collision birthday bound, identical to SipHash-64. This variant is
-//! slower than [`fast`]/[`quality`] (it is a real per-block cryptographic
-//! permutation-like round), hence [`HashInfo`]-style `SLOW`.
+//! slower than [`fast`](crate::fast)/[`quality`](crate::quality) (it is a real
+//! per-block cryptographic permutation-like round), hence `HashInfo`-style `SLOW`.
 //!
 //! ## Keying
 //!
-//! Security **requires an unpredictable key**. Use [`RandomState`] (enabled by
+//! Security **requires an unpredictable key**. Use `RandomState` (enabled by
 //! the `secure` crate feature, which draws a 128-bit key from the OS CSPRNG via
 //! `getrandom`). [`FixedState`] uses a caller-supplied fixed key and is
 //! deterministic — it is only appropriate when the key is itself secret, and is
@@ -190,7 +190,7 @@ const fn round(a: u64, b: u64, rk0: u64, rk1: u64) -> (u64, u64) {
 
 /// A [`Hasher`] implementing the foldhash `secure` keyed PRF.
 ///
-/// Create one via [`RandomState`], [`FixedState`], or directly with
+/// Create one via `RandomState`, [`FixedState`], or directly with
 /// [`SecureFoldHasher::with_key`]. The resident working state is the two 64-bit
 /// lanes plus the 128-bit master key (32 bytes) plus a 16-byte block buffer;
 /// round keys are derived on the fly (no materialized round-key array).
@@ -211,7 +211,7 @@ impl SecureFoldHasher {
     /// (`key = (khi << 64) | klo`).
     ///
     /// For HashDoS/PRF security the key must be unpredictable to the attacker;
-    /// prefer [`RandomState`] which draws it from the OS CSPRNG.
+    /// prefer `RandomState` which draws it from the OS CSPRNG.
     #[inline]
     pub const fn with_key(klo: u64, khi: u64) -> Self {
         let (a, b) = init_state(klo, khi);
