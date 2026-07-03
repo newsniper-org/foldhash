@@ -8,9 +8,9 @@ readme = "README.md"
 keywords = ["hash", "hasher", "no-std"]
 categories = ["algorithms", "no-std"]
 description = "A fast, non-cryptographic, minimally DoS-resistant hashing algorithm."
-edition = "2021"
+edition = "2024"
 exclude = ["benches", "tools", "assets"]
-rust-version = "1.60"
+rust-version = "1.96"
 
 [features]
 default = ["std"]

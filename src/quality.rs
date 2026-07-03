@@ -4,7 +4,7 @@ use core::hash::{BuildHasher, Hasher};
 
 use crate::seed::SharedSeed;
 
-use crate::{fast, folded_multiply, ARBITRARY0, ARBITRARY4};
+use crate::{ARBITRARY0, ARBITRARY4, fast, folded_multiply};
 
 /// A [`Hasher`] instance implementing foldhash, optimized for quality.
 ///

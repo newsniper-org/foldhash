@@ -2,8 +2,8 @@
 
 use core::hash::{BuildHasher, Hasher};
 
-use crate::seed::{gen_per_hasher_seed, GlobalSeed, SharedSeed};
-use crate::{folded_multiply, hash_bytes_long, hash_bytes_short, rotate_right, ARBITRARY3};
+use crate::seed::{GlobalSeed, SharedSeed, gen_per_hasher_seed};
+use crate::{ARBITRARY3, folded_multiply, hash_bytes_long, hash_bytes_short, rotate_right};
 
 /// A [`Hasher`] instance implementing foldhash, optimized for speed.
 ///

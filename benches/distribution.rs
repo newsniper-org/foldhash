@@ -42,71 +42,88 @@ macro_rules! new_distribution {
     };
 }
 
-new_distribution!(U32, u32, rng, rng.gen::<u32>() | 1, rng.gen::<u32>() & !1);
-new_distribution!(U64, u64, rng, rng.gen::<u64>() | 1, rng.gen::<u64>() & !1);
+new_distribution!(
+    U32,
+    u32,
+    rng,
+    rng.r#gen::<u32>() | 1,
+    rng.r#gen::<u32>() & !1
+);
+new_distribution!(
+    U64,
+    u64,
+    rng,
+    rng.r#gen::<u64>() | 1,
+    rng.r#gen::<u64>() & !1
+);
 
 new_distribution!(
     U64HiBits,
     u64,
     rng,
-    ((rng.gen::<u16>() as u64) << 48) | 1,
-    (rng.gen::<u16>() as u64) << 48
+    ((rng.r#gen::<u16>() as u64) << 48) | 1,
+    (rng.r#gen::<u16>() as u64) << 48
 );
 
 new_distribution!(
     U64LoBits,
     u64,
     rng,
-    (rng.gen::<u16>() as u64) | (1 << 63),
-    rng.gen::<u16>() as u64
+    (rng.r#gen::<u16>() as u64) | (1 << 63),
+    rng.r#gen::<u16>() as u64
 );
 
 new_distribution!(
     U32Pair,
     (u32, u32),
     rng,
-    (rng.gen(), rng.gen::<u32>() | 1),
-    (rng.gen(), rng.gen::<u32>() & !1)
+    (rng.r#gen(), rng.r#gen::<u32>() | 1),
+    (rng.r#gen(), rng.r#gen::<u32>() & !1)
 );
 
 new_distribution!(
     U64Pair,
     (u64, u64),
     rng,
-    (rng.gen(), rng.gen::<u64>() | 1),
-    (rng.gen(), rng.gen::<u64>() & !1)
+    (rng.r#gen(), rng.r#gen::<u64>() | 1),
+    (rng.r#gen(), rng.r#gen::<u64>() & !1)
 );
 
 new_distribution!(
     Rgba,
     (u8, u8, u8, u8),
     rng,
-    (rng.gen(), rng.gen(), rng.gen(), rng.gen::<u8>() | 1),
-    (rng.gen(), rng.gen(), rng.gen(), rng.gen::<u8>() & !1)
+    (rng.r#gen(), rng.r#gen(), rng.r#gen(), rng.r#gen::<u8>() | 1),
+    (
+        rng.r#gen(),
+        rng.r#gen(),
+        rng.r#gen(),
+        rng.r#gen::<u8>() & !1
+    )
 );
 
 new_distribution!(
     Ipv4,
     Ipv4Addr,
     rng,
-    rng.gen::<[u8; 4]>().map(|c| c | 1).into(),
-    rng.gen::<[u8; 4]>().map(|c| c & !1).into()
+    rng.r#gen::<[u8; 4]>().map(|c| c | 1).into(),
+    rng.r#gen::<[u8; 4]>().map(|c| c & !1).into()
 );
 
 new_distribution!(
     Ipv6,
     Ipv6Addr,
     rng,
-    rng.gen::<[u8; 16]>().map(|c| c | 1).into(),
-    rng.gen::<[u8; 16]>().map(|c| c & !1).into()
+    rng.r#gen::<[u8; 16]>().map(|c| c | 1).into(),
+    rng.r#gen::<[u8; 16]>().map(|c| c & !1).into()
 );
 
 new_distribution!(
     StrUuid,
     String,
     rng,
-    Uuid::from_u128(rng.gen::<u128>() | 1).to_string(),
-    Uuid::from_u128(rng.gen::<u128>() & !1).to_string()
+    Uuid::from_u128(rng.r#gen::<u128>() | 1).to_string(),
+    Uuid::from_u128(rng.r#gen::<u128>() & !1).to_string()
 );
 
 fn sample_date<R: Rng>(rng: &mut R, missing: bool) -> String {
@@ -139,16 +156,16 @@ new_distribution!(
     Kilobyte,
     Vec<u8>,
     rng,
-    (0..1024).map(|_| rng.gen::<u8>() | 1).collect(),
-    (0..1024).map(|_| rng.gen::<u8>() & !1).collect()
+    (0..1024).map(|_| rng.r#gen::<u8>() | 1).collect(),
+    (0..1024).map(|_| rng.r#gen::<u8>() & !1).collect()
 );
 
 new_distribution!(
     TenKilobyte,
     Vec<u8>,
     rng,
-    (0..1024 * 10).map(|_| rng.gen::<u8>() | 1).collect(),
-    (0..1024 * 10).map(|_| rng.gen::<u8>() & !1).collect()
+    (0..1024 * 10).map(|_| rng.r#gen::<u8>() | 1).collect(),
+    (0..1024 * 10).map(|_| rng.r#gen::<u8>() & !1).collect()
 );
 
 #[derive(Clone)]
@@ -162,20 +179,20 @@ impl Distribution for AccessLog {
     }
 
     fn sample<R: Rng>(&mut self, rng: &mut R) -> Self::Value {
-        let resource_id = rng.gen();
-        let user_id = rng.gen::<u32>() | 1;
+        let resource_id = rng.r#gen();
+        let user_id = rng.r#gen::<u32>() | 1;
         let date =
             chrono::NaiveDate::from_num_days_from_ce_opt(rng.gen_range(0..365 * 100)).unwrap();
-        let success = rng.gen();
+        let success = rng.r#gen();
         (resource_id, user_id, date, success)
     }
 
     fn sample_missing<R: Rng>(&mut self, rng: &mut R) -> Self::Value {
-        let resource_id = rng.gen();
-        let user_id = rng.gen::<u32>() & !1;
+        let resource_id = rng.r#gen();
+        let user_id = rng.r#gen::<u32>() & !1;
         let date =
             chrono::NaiveDate::from_num_days_from_ce_opt(rng.gen_range(0..365 * 100)).unwrap();
-        let success = rng.gen();
+        let success = rng.r#gen();
         (resource_id, user_id, date, success)
     }
 }

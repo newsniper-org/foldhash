@@ -422,7 +422,8 @@ impl RandomState {
     #[inline]
     pub fn new() -> Self {
         let mut kb = [0u8; 16];
-        getrandom::getrandom(&mut kb).expect("foldhash::secure::RandomState: OS CSPRNG unavailable");
+        getrandom::getrandom(&mut kb)
+            .expect("foldhash::secure::RandomState: OS CSPRNG unavailable");
         Self {
             klo: u64::from_le_bytes(kb[0..8].try_into().unwrap()),
             khi: u64::from_le_bytes(kb[8..16].try_into().unwrap()),
@@ -510,7 +511,8 @@ mod tests {
         assert_eq!(
             h(
                 "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-                KLO2, KHI2
+                KLO2,
+                KHI2
             ),
             0xf9767f2762ff0f8c
         );
@@ -535,7 +537,9 @@ mod tests {
     fn streaming_equals_oneshot() {
         // Splitting a message across arbitrary write() boundaries must equal a
         // single write of the concatenation.
-        let msg: std::vec::Vec<u8> = (0..200u32).map(|i| (i.wrapping_mul(37) ^ 0xA5) as u8).collect();
+        let msg: std::vec::Vec<u8> = (0..200u32)
+            .map(|i| (i.wrapping_mul(37) ^ 0xA5) as u8)
+            .collect();
         let oneshot = {
             let mut x = SecureFoldHasher::with_key(KLO1, KHI1);
             x.write(&msg);

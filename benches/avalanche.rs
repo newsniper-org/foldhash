@@ -13,7 +13,7 @@ fn compute_u64_avalanche<H: BuildHasher, F: FnMut() -> H>(
         let h = new_hasher();
         let mut bit_flips = vec![0; 64 * 64];
         for _ in 0..iters_per_hasher {
-            let base_val: u64 = rng.gen();
+            let base_val: u64 = rng.r#gen();
             let base_hash = h.hash_one(base_val);
             for flip_pos in 0..64 {
                 let delta_val = base_val ^ (1 << flip_pos);

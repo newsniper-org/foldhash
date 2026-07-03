@@ -3,8 +3,8 @@
 use crate::{ARBITRARY1, ARBITRARY5};
 
 use super::{
-    folded_multiply, ARBITRARY10, ARBITRARY11, ARBITRARY2, ARBITRARY6, ARBITRARY7, ARBITRARY8,
-    ARBITRARY9,
+    ARBITRARY2, ARBITRARY6, ARBITRARY7, ARBITRARY8, ARBITRARY9, ARBITRARY10, ARBITRARY11,
+    folded_multiply,
 };
 
 /// Used for FixedState, and RandomState if atomics for dynamic init are unavailable.
@@ -152,7 +152,7 @@ mod global {
         let func_ptr = generate_global_seed;
         let static_ptr = &GLOBAL_SEED_STORAGE as *const _;
         seed = mix(seed, stack_ptr as usize as u64);
-        seed = mix(seed, func_ptr as usize as u64);
+        seed = mix(seed, func_ptr as *const () as usize as u64);
         seed = mix(seed, static_ptr as usize as u64);
 
         // If we have the standard library available, augment entropy with the
