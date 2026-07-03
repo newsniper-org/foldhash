@@ -16,8 +16,13 @@ rust-version = "1.60"
 default = ["std"]
 std = []
 nightly = []
+# Enables `secure::RandomState`, which draws a per-instance 128-bit key from the
+# OS CSPRNG. Pulls in `getrandom`; the `secure` variant's core, `FixedState`, and
+# `with_key` remain available (zero-dep) without this feature.
+secure = ["dep:getrandom"]
 
 [dependencies]
+getrandom = { version = "0.2", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"

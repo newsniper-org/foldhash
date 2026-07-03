@@ -117,6 +117,7 @@
 
 pub mod fast;
 pub mod quality;
+pub mod secure;
 mod seed;
 pub use seed::SharedSeed;
 
